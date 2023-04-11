@@ -3,6 +3,7 @@ import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
 
 export const inputName = "gke-dynamic-provisioning";
+const projectId = gcp.config.project || "";
 
 // Create a GKE cluster
 const engineVersion = gcp.container
@@ -25,6 +26,14 @@ const cluster = new gcp.container.Cluster(inputName, {
       // the underlying instance or node must have the cloud-platform OAuth scope
       "https://www.googleapis.com/auth/cloud-platform",
     ],
+  },
+  ipAllocationPolicy: {
+    clusterIpv4CidrBlock: "",
+    servicesIpv4CidrBlock: "",
+  },
+  networkingMode: "VPC_NATIVE",
+  workloadIdentityConfig: {
+    workloadPool: `${projectId}.svc.id.goog`,
   },
 });
 
