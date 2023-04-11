@@ -2,14 +2,14 @@
 
 Having the need for a production ready GKE cluster? Need not to worry, this solution makes you ready to go in a matter of seconds. 
 
-## Installation
+
+![Workload Identity GCP - Page 1](https://user-images.githubusercontent.com/1217199/231302041-f3c16812-7ae8-4bd2-ae29-b876b136f73a.png)## Installation
 
 we will be using [Pulumi](https://www.pulumi.com/docs/reference/cli/pulumi_up/) in order to provisioning our Cloud Infrastructure.
 
 ```bash
 pulumi up
 ```
-
 ## Preview
 
 ```typescript
