@@ -1,5 +1,6 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as k8s from "@pulumi/kubernetes";
+import * as gcp from "@pulumi/gcp";
 
 import {
   clusterProvider,
@@ -7,7 +8,22 @@ import {
   kubeconfig as config,
   clusterNameOutput,
 } from "./providerCFG";
-import { database } from "./cloudsql";
+import { database, instance } from "./cloudsql";
+
+const projectId = gcp.config.project || "";
+const gsaName = "gke-workload";
+// Create a Google Cloud Service Account
+const gsa = new gcp.serviceaccount.Account(gsaName, {
+  accountId: gsaName,
+  displayName: gsaName,
+});
+
+// Role Binding at project level
+new gcp.projects.IAMBinding("gsa-ksa-cloudsql", {
+  members: [gsa.member],
+  project: projectId,
+  role: "roles/cloudsql.client",
+});
 
 // Create a Kubernetes Namespace
 const ns = new k8s.core.v1.Namespace(
@@ -17,6 +33,32 @@ const ns = new k8s.core.v1.Namespace(
 );
 // Export the namespace name
 export const namespaceName = ns.metadata.apply((m) => m.name);
+
+const ksaName = "workload";
+// Create a Kubernetes Service Account
+const ksa = new k8s.core.v1.ServiceAccount(
+  ksaName,
+  {
+    metadata: {
+      name: ksaName,
+      namespace: namespaceName,
+      annotations: {
+        "iam.gke.io/gcp-service-account": gsa.name,
+      },
+    },
+  },
+  { provider: clusterProvider, dependsOn: [gsa] }
+);
+
+// Role Binding at cluster level
+const ksaMember = namespaceName.apply(
+  (n) => `serviceAccount:${projectId}.svc.id.goog[${n}/${ksaName}]`
+);
+new gcp.serviceaccount.IAMBinding(`${gsaName}:${ksa}`, {
+  serviceAccountId: gsa.name,
+  members: [ksaMember],
+  role: `roles/iam.workloadIdentityUser`,
+});
 
 const appLabels = { appClass: inputName };
 const cfg = new pulumi.Config();
@@ -49,13 +91,27 @@ const deployment = new k8s.apps.v1.Deployment(
                 },
               ],
             },
+            {
+              name: "cloud-sql-proxy",
+              image: "gcr.io/cloud-sql-connectors/cloud-sql-proxy:latest",
+              args: [
+                "--structured-logs",
+                "--port=3306",
+                instance.connectionName,
+              ],
+              securityContext: {
+                runAsNonRoot: true,
+              },
+            },
           ],
+          serviceAccountName: ksaName,
         },
       },
     },
   },
   {
     provider: clusterProvider,
+    dependsOn: [ksa],
   }
 );
 
